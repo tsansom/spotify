@@ -94,8 +94,6 @@ dim_album:
 - track_ids array
 '''
 
-# alternative here is the package profanity_filter - don't really want these here
-curse_words = {'Shit': '****', 'shit': '****', 'Fuck': '****', 'fuck': '****', 'Bitch': '*****', 'bitch': '*****'}
 
 def refresh():
     '''
@@ -110,41 +108,28 @@ def refresh():
 
 def get_top_tracks(sp, n=50, offset=0, time_range='long_term'):
     '''
-    Pull the user top N most played tracks for the user
+    Pull the user top N most played tracks
     '''
     
     results = sp.current_user_top_tracks(limit=n, offset=offset, time_range=time_range)
     
     return parse_top_tracks(results)
   
-def parse_top_tracks(results, curse_words=curse_words):
+def parse_top_tracks(results):
     '''
     parse the track object from api response and return a dataframe of the results
+    - results are returned in rank order (confirmed on https://www.statsforspotify.com/track/top?timeRange=short_term)
     '''
   
     df = pd.DataFrame(columns=['track_id', 'rank', 'current_datetime'])
-                            #    'artist_id', 'artist_ids', 'name', 'duration_ms', 'explicit', 
-                            #    'popularity', 'album_id', 'rank'])
     
     current_datetime = pd.to_datetime(datetime.now())
 
     for rank, result in enumerate(results['items']):
         track_id = result['id']
-        # artist_ids = [artist['id'] for artist in result['artists']]
-        # artist_id = result['artists'][0]['id']
-        # name = result['name']
-        # for k, v in curse_words.items():
-            # name = name.replace(k, v)
-        # duration_ms = result['duration_ms']
-        # explicit = result['explicit']
-        # popularity = result['popularity']
-        # album_id = result['album']['id']
-    
-        df.loc[len(df)] = [track_id, rank+1, current_datetime]
-                        #    artist_id, artist_ids, name, duration_ms, explicit, popularity, album_id, rank+1]
-    
-    # df = append_audio_features(sp, df)
 
+        df.loc[len(df)] = [track_id, rank+1, current_datetime]
+    
     return df
 
 def get_recently_played(sp, n=50):
@@ -160,26 +145,12 @@ def parse_recently_played(results):
     '''
 
     df = pd.DataFrame(columns=['track_id', 'played_at'])
-                            #    'artist_id', 'artist_ids', 'name', 'duration_ms', 'explicit', 
-                            #    'popularity', 'album_id', 'played_at'])
     
     for result in results['items']:
         track_id = result['track']['id']
-        # artist_ids = [artist['id'] for artist in result['track']['artists']]
-        # artist_id = result['track']['artists'][0]['id']
-        # name = result['track']['name']
-        # # replace any curse words with ****
-        # for k, v in curse_words.items():
-            # name = name.replace(k, v)
-        # duration_ms = result['track']['duration_ms']
-        # explicit = result['track']['explicit']
-        # popularity = result['track']['popularity']
-        # album_id = result['track']['album']['id']
         played_at = pd.to_datetime(result['played_at'])
 
-
         df.loc[len(df)] = [track_id, played_at]
-                        #    artist_id, artist_ids, name, duration_ms, explicit, popularity, album_id, played_at]
 
     df['played_at'] = df['played_at'].dt.tz_convert('America/Chicago') \
                                      .dt.tz_localize(None) \
@@ -187,16 +158,23 @@ def parse_recently_played(results):
 
     return df
 
-def get_audio_features(sp, tracks):
+def get_audio_features(sp, tracks, chunk_size=100):
     '''
     pull the audio features for a track - tracks can be a single track (str) or a list of tracks
 
     max limit = 100
     '''
 
-    af = sp.audio_features(tracks)
+    df = pd.DataFrame()
 
-    return af
+    for i in range(0, len(tracks), chunk_size):
+        tmp = parse_audio_features(sp.audio_features(tracks[i:i+chunk_size]))
+        df = pd.concat([df, tmp])
+        print(tmp)
+
+    # af = sp.audio_features(tracks)
+
+    return df
 
 def parse_audio_features(results):
     '''
@@ -232,9 +210,10 @@ def append_audio_features(sp, df):
     append track audio features to an existing dataframe of tracks
     '''
 
-    df = df.set_index('track_id')
+    if not df.index.name:
+        df = df.set_index('track_id')
     af = get_audio_features(sp, df.index.tolist())
-    af_df = parse_audio_features(af).set_index('track_id')
+    af_df = af.set_index('track_id')
 
     return df.join(af_df)
 
@@ -264,14 +243,10 @@ def parse_track_info(sp, results):
     df = pd.DataFrame(columns=['track_id', 'artist_id', 'artist_ids', 'name', 'duration_ms', 'explicit', 'popularity', 'album_id'])
 
     for result in results['tracks']:
-        # print(result)
         track_id = result['id']
         artist_ids = [artist['id'] for artist in result['artists']]
         artist_id = result['artists'][0]['id']
         name = result['name']
-        # replace any curse words with ****
-        for k, v in curse_words.items():
-            name = name.replace(k, v)
         duration_ms = result['duration_ms']
         explicit = result['explicit']
         popularity = result['popularity']
