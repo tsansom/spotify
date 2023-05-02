@@ -170,7 +170,6 @@ def get_audio_features(sp, tracks, chunk_size=100):
     for i in range(0, len(tracks), chunk_size):
         tmp = parse_audio_features(sp.audio_features(tracks[i:i+chunk_size]))
         df = pd.concat([df, tmp])
-        print(tmp)
 
     # af = sp.audio_features(tracks)
 
@@ -388,12 +387,15 @@ top50_tracks = get_track_info(sp, top50)
 top50_albums = get_album_info(sp, top50_tracks)
 top50_artists = get_artist_info(sp, top50_tracks)
 
-# recent = get_recently_played(sp)
+recent = get_recently_played(sp)
 
-# recent_tracks = get_track_info(sp, recent)
-# recent_albums = get_album_info(sp, recent_tracks)
-# recent_artists = get_artist_info(sp, recent_tracks)
+recent_tracks = get_track_info(sp, recent)
+recent_albums = get_album_info(sp, recent_tracks)
+recent_artists = get_artist_info(sp, recent_tracks)
 
 insert_data(top50_tracks, 'dim_track')
 insert_data(top50_artists, 'dim_artist')
 insert_data(top50_albums, 'dim_album')
+insert_data(recent_tracks, 'dim_track')
+insert_data(recent_albums, 'dim_album')
+insert_data(recent_artists, 'dim_artist')
