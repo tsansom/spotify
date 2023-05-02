@@ -403,7 +403,7 @@ sp = spotipy.Spotify(auth=token)
 ############################################################################
 
 def get_connection():
-    return psycopg2.connect(host='localhost', database='spotify', user='tsansom', password='crap')
+    return psycopg2.connect(host='localhost', database='spotify', user='tsansom')
 
 ############################################################################
 
