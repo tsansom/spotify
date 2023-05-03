@@ -52,11 +52,12 @@ fact_recently_played:
 - played_at timestamp
 
 fact_top_50:
-- track_id varchar primary key
+- track_id varchar
 - rank integer
 - is_current bool
 - valid_from timestamp (?)
 - valid_to timestamp (?)
+- PRIMARY KEY (track_id, rank)
 
 dim_track:
 - track_id varchar primary key
@@ -121,14 +122,17 @@ def parse_top_tracks(results):
     - results are returned in rank order (confirmed on https://www.statsforspotify.com/track/top?timeRange=short_term)
     '''
   
-    df = pd.DataFrame(columns=['track_id', 'rank', 'current_datetime'])
+    # df = pd.DataFrame(columns=['track_id', 'rank', 'valid_from', 'valid_to', 'is_current'])
+    df = pd.DataFrame(columns=['track_id', 'rank', 'is_current'])
     
-    current_datetime = pd.to_datetime(datetime.now())
+    # valid_from = pd.to_datetime(datetime.now())
+    # valid_to = pd.to_datetime(datetime.strptime('2099-12-31 00:00:00', '%Y-%m-%d %H:%M:%S'))
 
     for rank, result in enumerate(results['items']):
         track_id = result['id']
 
-        df.loc[len(df)] = [track_id, rank+1, current_datetime]
+        # df.loc[len(df)] = [track_id, rank+1, valid_from, valid_to, True]
+        df.loc[len(df)] = [track_id, rank+1, True]
     
     return df
 
@@ -342,16 +346,58 @@ def item_exists(conn, id, target_table):
     return cur.fetchone() is not None
 
 def insert_data(df, table):
-    df = df.reset_index()
+    if df.index.name is not None:
+        df = df.reset_index()
+    
     conn = get_connection()
     cur = conn.cursor()
     df_columns = list(df)
     columns = ', '.join(df_columns)
     values = "VALUES ({})".format(", ".join(["%s" for _ in df_columns]))
     insert_stmt = "INSERT INTO {} ({}) {} ON CONFLICT DO NOTHING".format(table, columns, values)
+    
     psycopg2.extras.execute_batch(cur, insert_stmt, df.values)
     conn.commit()
     conn.close()
+
+def insert_scd_source_data(df, table='fact_top_50_src'):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    truncate_stmt = 'TRUNCATE TABLE {};'.format(table)
+    cur.execute(truncate_stmt)
+    conn.commit()
+
+    df_columns = list(df)
+    columns = ', '.join(df_columns)
+    values = "VALUES ({})".format(", ".join(["%s" for _ in df_columns]))
+    insert_stmt = "INSERT INTO {} ({}) {}".format(table, columns, values)
+    
+    psycopg2.extras.execute_batch(cur, insert_stmt, df.values)
+    conn.commit()
+    conn.close()
+
+def update_fact_scd(table='fact_top_50'):
+    q = '''
+        WITH u AS (
+            UPDATE fact_top_50 fact
+                SET is_current = False,
+                    valid_to = src.valid_from
+            FROM fact_top_50_src src
+            WHERE fact.track_id = src.track_id AND fact.is_current = True and fact.rank != src.rank
+        )
+
+        INSERT INTO fact_top_50 (track_id, rank, is_current, valid_from, valid_to)
+            SELECT a.*
+            FROM fact_top_50_src a
+            JOIN fact_top_50 b ON a.track_id = b.track_id AND a.rank != b.rank
+        ON CONFLICT DO NOTHING
+    '''
+
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(q)
+    conn.commit()
 
 #############################################################################
 
@@ -387,15 +433,19 @@ top50_tracks = get_track_info(sp, top50)
 top50_albums = get_album_info(sp, top50_tracks)
 top50_artists = get_artist_info(sp, top50_tracks)
 
-recent = get_recently_played(sp)
+# recent = get_recently_played(sp)
 
-recent_tracks = get_track_info(sp, recent)
-recent_albums = get_album_info(sp, recent_tracks)
-recent_artists = get_artist_info(sp, recent_tracks)
+# recent_tracks = get_track_info(sp, recent)
+# recent_albums = get_album_info(sp, recent_tracks)
+# recent_artists = get_artist_info(sp, recent_tracks)
 
-insert_data(top50_tracks, 'dim_track')
-insert_data(top50_artists, 'dim_artist')
-insert_data(top50_albums, 'dim_album')
-insert_data(recent_tracks, 'dim_track')
-insert_data(recent_albums, 'dim_album')
-insert_data(recent_artists, 'dim_artist')
+# insert_data(top50_tracks, 'dim_track')
+# insert_data(top50_artists, 'dim_artist')
+# insert_data(top50_albums, 'dim_album')
+# insert_data(recent_tracks, 'dim_track')
+# insert_data(recent_albums, 'dim_album')
+# insert_data(recent_artists, 'dim_artist')
+# insert_data(recent, 'fact_recently_played')
+
+insert_scd_source_data(top50)
+update_fact_scd()
