@@ -111,29 +111,26 @@ def get_top_tracks(sp, n=50, offset=0, time_range='long_term'):
     '''
     Pull the user top N most played tracks
     '''
-    
+
     results = sp.current_user_top_tracks(limit=n, offset=offset, time_range=time_range)
-    
-    return parse_top_tracks(results)
-  
-def parse_top_tracks(results):
+
+    return parse_top_tracks(results, time_range)
+
+def parse_top_tracks(results, time_range):
     '''
     parse the track object from api response and return a dataframe of the results
     - results are returned in rank order (confirmed on https://www.statsforspotify.com/track/top?timeRange=short_term)
     '''
-  
-    # df = pd.DataFrame(columns=['track_id', 'rank', 'valid_from', 'valid_to', 'is_current'])
+
     df = pd.DataFrame(columns=['track_id', 'rank', 'is_current'])
-    
-    # valid_from = pd.to_datetime(datetime.now())
-    # valid_to = pd.to_datetime(datetime.strptime('2099-12-31 00:00:00', '%Y-%m-%d %H:%M:%S'))
 
     for rank, result in enumerate(results['items']):
         track_id = result['id']
 
-        # df.loc[len(df)] = [track_id, rank+1, valid_from, valid_to, True]
         df.loc[len(df)] = [track_id, rank+1, True]
-    
+
+    df['time_range'] = time_range
+
     return df
 
 def get_recently_played(sp, n=50):
@@ -149,7 +146,7 @@ def parse_recently_played(results):
     '''
 
     df = pd.DataFrame(columns=['track_id', 'played_at'])
-    
+
     for result in results['items']:
         track_id = result['track']['id']
         played_at = pd.to_datetime(result['played_at'])
@@ -184,11 +181,11 @@ def parse_audio_features(results):
     parse the individual audio features for the track
     '''
 
-    df = pd.DataFrame(columns=['track_id', 'danceability', 'energy', 'key', 'loudness', 'mode', 'speechiness', 'acousticness', 
+    df = pd.DataFrame(columns=['track_id', 'danceability', 'energy', 'key', 'loudness', 'mode', 'speechiness', 'acousticness',
                                'instrumentalness', 'liveness', 'valence', 'tempo', 'time_signature'])
 
     for result in results:
-        
+
         track_id = result['id']
         danceability = result['danceability']
         energy = result['energy']
@@ -203,7 +200,7 @@ def parse_audio_features(results):
         tempo = result['tempo']
         time_signature = result['time_signature']
 
-        df.loc[len(df)] = [track_id, danceability, energy, key, loudness, mode, speechiness, acousticness, 
+        df.loc[len(df)] = [track_id, danceability, energy, key, loudness, mode, speechiness, acousticness,
                            instrumentalness, liveness, valence, tempo, time_signature]
 
     return df
@@ -308,7 +305,7 @@ def get_album_info(sp, df, chunk_size=20):
     for i in range(0, len(albums), chunk_size):
         tmp = parse_album_info(sp.albums(albums[i:i+chunk_size]))
         df = pd.concat([df, tmp])
-            
+
 
     return df.set_index('album_id')
 
@@ -348,14 +345,14 @@ def item_exists(conn, id, target_table):
 def insert_data(df, table):
     if df.index.name is not None:
         df = df.reset_index()
-    
+
     conn = get_connection()
     cur = conn.cursor()
     df_columns = list(df)
     columns = ', '.join(df_columns)
     values = "VALUES ({})".format(", ".join(["%s" for _ in df_columns]))
     insert_stmt = "INSERT INTO {} ({}) {} ON CONFLICT DO NOTHING".format(table, columns, values)
-    
+
     psycopg2.extras.execute_batch(cur, insert_stmt, df.values)
     conn.commit()
     conn.close()
@@ -368,11 +365,14 @@ def insert_scd_source_data(df, table='fact_top_50_src'):
     cur.execute(truncate_stmt)
     conn.commit()
 
+    df['valid_from'] = pd.to_datetime(datetime.now())
+    df['valid_to'] = pd.to_datetime(datetime.strptime('2099-12-31 00:00:00', '%Y-%m-%d %H:%M:%S'))
+
     df_columns = list(df)
     columns = ', '.join(df_columns)
     values = "VALUES ({})".format(", ".join(["%s" for _ in df_columns]))
     insert_stmt = "INSERT INTO {} ({}) {}".format(table, columns, values)
-    
+
     psycopg2.extras.execute_batch(cur, insert_stmt, df.values)
     conn.commit()
     conn.close()
@@ -384,13 +384,34 @@ def update_fact_scd(table='fact_top_50'):
                 SET is_current = False,
                     valid_to = src.valid_from
             FROM fact_top_50_src src
-            WHERE fact.track_id = src.track_id AND fact.is_current = True and fact.rank != src.rank
+            WHERE
+                fact.track_id != src.track_id
+                AND fact.is_current = True
+                AND fact.rank = src.rank
+                AND fact.time_range = src.time_range
         )
 
-        INSERT INTO fact_top_50 (track_id, rank, is_current, valid_from, valid_to)
-            SELECT a.*
-            FROM fact_top_50_src a
-            JOIN fact_top_50 b ON a.track_id = b.track_id AND a.rank != b.rank
+        INSERT INTO fact_top_50 (
+            track_id,
+            rank,
+            time_range,
+            is_current,
+            valid_from,
+            valid_to)
+    	SELECT
+    		a.track_id,
+    		a.rank,
+    		a.time_range,
+    		a.is_current,
+    		a.valid_from,
+    		a.valid_to
+    	FROM fact_top_50_src AS a
+    	LEFT JOIN fact_top_50 AS b
+    	    ON a.track_id = b.track_id
+    	    AND a.rank = b.rank
+    	    AND a.time_range = b.time_range
+    	    AND b.is_current = True
+    	WHERE b.track_id IS NULL
         ON CONFLICT DO NOTHING
     '''
 
@@ -404,12 +425,14 @@ def update_fact_scd(table='fact_top_50'):
 scopes = ['user-top-read', 'user-read-recently-played']
 
 sp_oauth = SpotifyOAuth(scope=scopes)
-token_info = sp_oauth.get_cached_token() 
-token = token_info['access_token']
-
-
-if not token_info:
+token_info = sp_oauth.get_cached_token()
+try:
+    token = token_info['access_token']
+except:
+    # if not token_info:
     auth_url = sp_oauth.get_authorize_url()
+
+    print(auth_url)
 
     response = input('Paste the above link into your browser, then paste the redirect url here: ')
 
@@ -423,29 +446,33 @@ sp = spotipy.Spotify(auth=token)
 ############################################################################
 
 def get_connection():
-    return psycopg2.connect(host='localhost', database='spotify', user='tsansom')
+    return psycopg2.connect(host='localhost', database='spotify',
+                            user='tsansom', password=os.getenv('POSTGRES_PASSWORD'))
 
 ############################################################################
 
-top50 = get_top_tracks(sp, time_range='short_term')
+for time_range in ['short_term', 'medium_term', 'long_term']:
+    top50 = get_top_tracks(sp, time_range=time_range)
 
-top50_tracks = get_track_info(sp, top50)
-top50_albums = get_album_info(sp, top50_tracks)
-top50_artists = get_artist_info(sp, top50_tracks)
+    top50_tracks = get_track_info(sp, top50)
+    top50_albums = get_album_info(sp, top50_tracks)
+    top50_artists = get_artist_info(sp, top50_tracks)
 
-# recent = get_recently_played(sp)
+    insert_data(top50_tracks, 'dim_track')
+    insert_data(top50_artists, 'dim_artist')
+    insert_data(top50_albums, 'dim_album')
 
-# recent_tracks = get_track_info(sp, recent)
-# recent_albums = get_album_info(sp, recent_tracks)
-# recent_artists = get_artist_info(sp, recent_tracks)
+    insert_scd_source_data(top50)
+    update_fact_scd()
 
-# insert_data(top50_tracks, 'dim_track')
-# insert_data(top50_artists, 'dim_artist')
-# insert_data(top50_albums, 'dim_album')
-# insert_data(recent_tracks, 'dim_track')
-# insert_data(recent_albums, 'dim_album')
-# insert_data(recent_artists, 'dim_artist')
-# insert_data(recent, 'fact_recently_played')
 
-insert_scd_source_data(top50)
-update_fact_scd()
+recent = get_recently_played(sp)
+
+recent_tracks = get_track_info(sp, recent)
+recent_albums = get_album_info(sp, recent_tracks)
+recent_artists = get_artist_info(sp, recent_tracks)
+
+insert_data(recent_tracks, 'dim_track')
+insert_data(recent_albums, 'dim_album')
+insert_data(recent_artists, 'dim_artist')
+insert_data(recent, 'fact_recently_played')
