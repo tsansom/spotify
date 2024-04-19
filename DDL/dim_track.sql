@@ -1,5 +1,5 @@
-CREATE TABLE dim_track (
-  track_id varchar primary key,
+CREATE TABLE source.dim_track (
+  track_id varchar primary key UNIQUE,
   artist_id varchar,
   artist_ids varchar[],
   name varchar,
@@ -16,6 +16,7 @@ CREATE TABLE dim_track (
   acousticness numeric,
   instrumentalness numeric,
   liveness numeric,
+  valence numeric,
   tempo numeric,
   time_signature integer
 );

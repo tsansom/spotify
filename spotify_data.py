@@ -357,7 +357,7 @@ def insert_data(df, table):
     conn.commit()
     conn.close()
 
-def insert_scd_source_data(df, table='fact_top_50_src'):
+def insert_scd_source_data(df, table='staging.fact_top_50_stage'):
     conn = get_connection()
     cur = conn.cursor()
 
@@ -377,13 +377,13 @@ def insert_scd_source_data(df, table='fact_top_50_src'):
     conn.commit()
     conn.close()
 
-def update_fact_scd(table='fact_top_50'):
+def update_fact_scd(table='source.fact_top_50'):
     q = '''
         WITH u AS (
-            UPDATE fact_top_50 fact
+            UPDATE source.fact_top_50 fact
                 SET is_current = False,
                     valid_to = src.valid_from
-            FROM fact_top_50_src src
+            FROM staging.fact_top_50_stage src
             WHERE
                 fact.track_id != src.track_id
                 AND fact.is_current = True
@@ -391,7 +391,7 @@ def update_fact_scd(table='fact_top_50'):
                 AND fact.time_range = src.time_range
         )
 
-        INSERT INTO fact_top_50 (
+        INSERT INTO source.fact_top_50 (
             track_id,
             rank,
             time_range,
@@ -405,8 +405,8 @@ def update_fact_scd(table='fact_top_50'):
     		a.is_current,
     		a.valid_from,
     		a.valid_to
-    	FROM fact_top_50_src AS a
-    	LEFT JOIN fact_top_50 AS b
+    	FROM staging.fact_top_50_stage AS a
+    	LEFT JOIN source.fact_top_50 AS b
     	    ON a.track_id = b.track_id
     	    AND a.rank = b.rank
     	    AND a.time_range = b.time_range
@@ -458,9 +458,9 @@ for time_range in ['short_term', 'medium_term', 'long_term']:
     top50_albums = get_album_info(sp, top50_tracks)
     top50_artists = get_artist_info(sp, top50_tracks)
 
-    insert_data(top50_tracks, 'dim_track')
-    insert_data(top50_artists, 'dim_artist')
-    insert_data(top50_albums, 'dim_album')
+    insert_data(top50_tracks, 'source.dim_track')
+    insert_data(top50_artists, 'source.dim_artist')
+    insert_data(top50_albums, 'source.dim_album')
 
     insert_scd_source_data(top50)
     update_fact_scd()
@@ -472,7 +472,7 @@ recent_tracks = get_track_info(sp, recent)
 recent_albums = get_album_info(sp, recent_tracks)
 recent_artists = get_artist_info(sp, recent_tracks)
 
-insert_data(recent_tracks, 'dim_track')
-insert_data(recent_albums, 'dim_album')
-insert_data(recent_artists, 'dim_artist')
-insert_data(recent, 'fact_recently_played')
+insert_data(recent_tracks, 'source.dim_track')
+insert_data(recent_albums, 'source.dim_album')
+insert_data(recent_artists, 'source.dim_artist')
+insert_data(recent, 'source.fact_recently_played')
