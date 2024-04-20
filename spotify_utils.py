@@ -5,18 +5,6 @@ import spotipy.util as util
 import pandas as pd
 from datetime import datetime
 
-
-def refresh():
-    '''
-    Refresh the access token - required every hour
-    '''
-    global token_info, sp
-
-    if sp_oauth.is_token_expired(token_info):
-        token_info = sp_oauth.refresh_access_token(token_info['refresh_token'])
-        token = token_info['access_token']
-        sp = spotipy.Spotify(auth=token)
-
 def get_spotify_token():
     scopes = ['user-top-read', 'user-read-recently-played']
 
