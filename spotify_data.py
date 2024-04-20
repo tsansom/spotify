@@ -7,7 +7,8 @@ import pandas as pd
 from datetime import datetime
 import psycopg2
 import psycopg2.extras
-from spotify_helpers import *
+from spotify_utils import *
+from db_utils import *
 
 '''
 Project Notes
@@ -99,7 +100,17 @@ dim_album:
 
 #############################################################################
 
+def get_connection():
+    return psycopg2.connect(
+        host=os.getenv('POSTGRES_HOST'), 
+        database=os.getenv('POSTGRES_DB'),
+        user=os.getenv('POSTGRES_USER'), 
+        password=os.getenv('POSTGRES_PASSWORD')
+        )
+
+
 sp = get_spotify_token()
+conn = get_connection()
 
 ############################################################################
 
@@ -110,12 +121,12 @@ for time_range in ['short_term', 'medium_term', 'long_term']:
     top50_albums = get_album_info(sp, top50_tracks)
     top50_artists = get_artist_info(sp, top50_tracks)
 
-    insert_data(top50_tracks, 'source.dim_track')
-    insert_data(top50_artists, 'source.dim_artist')
-    insert_data(top50_albums, 'source.dim_album')
+    insert_data(conn, top50_tracks, 'source.dim_track')
+    insert_data(conn, top50_artists, 'source.dim_artist')
+    insert_data(conn, top50_albums, 'source.dim_album')
 
-    insert_scd_source_data(top50)
-    update_fact_scd()
+    insert_scd_source_data(conn, top50)
+    update_fact_scd(conn)
 
 
 recent = get_recently_played(sp)
@@ -124,7 +135,9 @@ recent_tracks = get_track_info(sp, recent)
 recent_albums = get_album_info(sp, recent_tracks)
 recent_artists = get_artist_info(sp, recent_tracks)
 
-insert_data(recent_tracks, 'source.dim_track')
-insert_data(recent_albums, 'source.dim_album')
-insert_data(recent_artists, 'source.dim_artist')
-insert_data(recent, 'source.fact_recently_played')
+insert_data(conn, recent_tracks, 'source.dim_track')
+insert_data(conn, recent_albums, 'source.dim_album')
+insert_data(conn, recent_artists, 'source.dim_artist')
+insert_data(conn, recent, 'source.fact_recently_played')
+
+conn.close()

@@ -8,10 +8,6 @@ from datetime import datetime
 import psycopg2
 import psycopg2.extras
 
-def get_connection():
-    return psycopg2.connect(host='localhost', database='spotify',
-                            user='tsansom', password=os.getenv('POSTGRES_PASSWORD'))
-
 def refresh():
     '''
     Refresh the access token - required every hour
@@ -282,11 +278,11 @@ def item_exists(conn, id, target_table):
 
     return cur.fetchone() is not None
 
-def insert_data(df, table):
+def insert_data(conn, df, table):
     if df.index.name is not None:
         df = df.reset_index()
 
-    conn = get_connection()
+    # conn = get_connection()
     cur = conn.cursor()
     df_columns = list(df)
     columns = ', '.join(df_columns)
@@ -297,8 +293,8 @@ def insert_data(df, table):
     conn.commit()
     conn.close()
 
-def insert_scd_source_data(df, table='staging.fact_top_50_stage'):
-    conn = get_connection()
+def insert_scd_source_data(conn, df, table='staging.fact_top_50_stage'):
+    # conn = get_connection()
     cur = conn.cursor()
 
     truncate_stmt = 'TRUNCATE TABLE {};'.format(table)
@@ -317,7 +313,7 @@ def insert_scd_source_data(df, table='staging.fact_top_50_stage'):
     conn.commit()
     conn.close()
 
-def update_fact_scd(table='source.fact_top_50'):
+def update_fact_scd(conn, table='source.fact_top_50'):
     q = '''
         WITH u AS (
             UPDATE source.fact_top_50 fact
@@ -355,7 +351,7 @@ def update_fact_scd(table='source.fact_top_50'):
         ON CONFLICT DO NOTHING
     '''
 
-    conn = get_connection()
+    # conn = get_connection()
     cur = conn.cursor()
     cur.execute(q)
     conn.commit()
