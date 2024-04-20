@@ -1,12 +1,3 @@
-import os
-import json
-import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
-import spotipy.util as util
-import pandas as pd
-from datetime import datetime
-import psycopg2
-import psycopg2.extras
 from spotify_utils import *
 from db_utils import *
 
@@ -100,15 +91,6 @@ dim_album:
 
 #############################################################################
 
-def get_connection():
-    return psycopg2.connect(
-        host=os.getenv('POSTGRES_HOST'), 
-        database=os.getenv('POSTGRES_DB'),
-        user=os.getenv('POSTGRES_USER'), 
-        password=os.getenv('POSTGRES_PASSWORD')
-        )
-
-
 sp = get_spotify_token()
 conn = get_connection()
 
@@ -139,5 +121,7 @@ insert_data(conn, recent_tracks, 'source.dim_track')
 insert_data(conn, recent_albums, 'source.dim_album')
 insert_data(conn, recent_artists, 'source.dim_artist')
 insert_data(conn, recent, 'source.fact_recently_played')
+
+############################################################################
 
 conn.close()

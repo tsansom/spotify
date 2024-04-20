@@ -31,7 +31,6 @@ def insert_data(conn, df, table):
     if df.index.name is not None:
         df = df.reset_index()
 
-    # conn = get_connection()
     cur = conn.cursor()
     df_columns = list(df)
     columns = ', '.join(df_columns)
@@ -40,10 +39,8 @@ def insert_data(conn, df, table):
 
     psycopg2.extras.execute_batch(cur, insert_stmt, df.values)
     conn.commit()
-    # conn.close()
 
 def insert_scd_source_data(conn, df, table='staging.fact_top_50_stage'):
-    # conn = get_connection()
     cur = conn.cursor()
 
     truncate_stmt = 'TRUNCATE TABLE {};'.format(table)
@@ -60,7 +57,6 @@ def insert_scd_source_data(conn, df, table='staging.fact_top_50_stage'):
 
     psycopg2.extras.execute_batch(cur, insert_stmt, df.values)
     conn.commit()
-    # conn.close()
 
 def update_fact_scd(conn, table='source.fact_top_50'):
     q = '''
@@ -100,7 +96,6 @@ def update_fact_scd(conn, table='source.fact_top_50'):
         ON CONFLICT DO NOTHING
     '''
 
-    # conn = get_connection()
     cur = conn.cursor()
     cur.execute(q)
     conn.commit()
