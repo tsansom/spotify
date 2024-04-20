@@ -98,29 +98,6 @@ dim_album:
 '''
 
 #############################################################################
-def get_spotify_token():
-    scopes = ['user-top-read', 'user-read-recently-played']
-
-    sp_oauth = SpotifyOAuth(scope=scopes)
-    token_info = sp_oauth.get_cached_token()
-    try:
-        token = token_info['access_token']
-    except:
-        # if not token_info:
-        auth_url = sp_oauth.get_authorize_url()
-
-        print(auth_url)
-
-        response = input('Paste the above link into your browser, then paste the redirect url here: ')
-
-        code = sp_oauth.parse_response_code(response)
-        token_info = sp_oauth.get_access_token(code)
-
-        token = token_info['access_token']
-
-    sp = spotipy.Spotify(auth=token)
-
-    return sp
 
 sp = get_spotify_token()
 

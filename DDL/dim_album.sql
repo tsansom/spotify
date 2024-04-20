@@ -1,4 +1,4 @@
-CREATE TABLE dim_album (
+CREATE TABLE source.dim_album (
   album_id varchar primary key UNIQUE,
   name varchar,
   popularity integer,
