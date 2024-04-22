@@ -9,7 +9,7 @@ def get_spotify_token():
     scopes = ['user-top-read', 'user-read-recently-played']
 
     sp_oauth = SpotifyOAuth(scope=scopes)
-    token_info = sp_oauth.get_cached_token()
+    token_info = sp_oauth.validate_token()
     try:
         token = token_info['access_token']
     except:
